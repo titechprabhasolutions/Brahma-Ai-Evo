@@ -16421,8 +16421,14 @@ class BrahmaUI:
             pass
 
     def open_embedded_browser(self, address: str):
-        """Queue embedded browser navigation on the Qt main thread."""
-        self._win._open_browser_sig.emit(str(address or ""))
+        """Validate and queue embedded browser navigation on the Qt main thread."""
+        from core.embedded_browser import normalize_browser_url
+        if not WEB_ENGINE_AVAILABLE:
+            raise RuntimeError(
+                "QtWebEngine is not available. Install PyQt6-WebEngine and restart Brahma."
+            )
+        safe_address = normalize_browser_url(str(address or ""))
+        self._win._open_browser_sig.emit(safe_address)
 
     def write_log(self, text: str):
         self._win._log_sig.emit(text)
