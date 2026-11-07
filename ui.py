@@ -2138,7 +2138,7 @@ class GestureCameraPreview(QFrame):
                 try:
                     self._hands = HandsClass(
                         static_image_mode=False,
-                        max_num_hands=1,
+                        max_num_hands=2,
                         min_detection_confidence=0.5,
                         min_tracking_confidence=0.5,
                     )
@@ -2191,7 +2191,14 @@ class GestureCameraPreview(QFrame):
                             return
 
                 try:
-                    self._hands = vision.HandLandmarker.create_from_model_path(str(model_path))
+                    # The Tasks API defaults to one hand. Explicitly request two
+                    # so the two-hand spread/close zoom gesture can actually run.
+                    tasks_python = importlib.import_module("mediapipe.tasks.python")
+                    options = vision.HandLandmarkerOptions(
+                        base_options=tasks_python.BaseOptions(model_asset_path=str(model_path)),
+                        num_hands=2,
+                    )
+                    self._hands = vision.HandLandmarker.create_from_options(options)
                     self._use_tasks_api = True
                     self._vision_module = vision
                 except Exception as exc:
