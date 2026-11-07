@@ -72,3 +72,40 @@ def test_tracker_reset_clears_transient_session_state():
     assert tracker.last_volume_time == 0.0
     assert tracker.palm_held_start == 0.0
     assert tracker.pos_history == []
+
+
+def _three_finger_landmarks(y_offset: float = 0.0):
+    points = [(0.5, 0.5 + y_offset, 0.0)] * 21
+    points[0] = (0.5, 0.8 + y_offset, 0.0)   # wrist
+    points[9] = (0.5, 0.5 + y_offset, 0.0)   # palm center / scale
+    points[4] = (0.5, 0.7 + y_offset, 0.0)   # thumb stays closed
+    points[8] = (0.42, 0.2 + y_offset, 0.0)
+    points[6] = (0.42, 0.3 + y_offset, 0.0)
+    points[12] = (0.50, 0.18 + y_offset, 0.0)
+    points[10] = (0.50, 0.28 + y_offset, 0.0)
+    points[16] = (0.58, 0.22 + y_offset, 0.0)
+    points[14] = (0.58, 0.32 + y_offset, 0.0)
+    points[20] = (0.66, 0.42 + y_offset, 0.0)
+    points[18] = (0.66, 0.35 + y_offset, 0.0)
+    return points
+
+
+def test_three_finger_vertical_motion_scrolls_down(monkeypatch):
+    tracker = GestureTracker()
+    ticks = iter([1.00, 1.05, 1.10, 1.15])
+    monkeypatch.setattr("gesture_utils.time.monotonic", lambda: next(ticks))
+
+    states = [
+        estimate_gesture_state(_three_finger_landmarks(offset), tracker=tracker)
+        for offset in (0.0, 0.06, 0.12, 0.18)
+    ]
+
+    assert states[-1]["action"] == "scroll_down"
+    assert states[-1]["gesture_name"].startswith("Three Finger Scroll")
+
+
+def test_tracker_reset_clears_scroll_cooldown():
+    tracker = GestureTracker()
+    tracker.last_scroll_time = 123.0
+    tracker.reset()
+    assert tracker.last_scroll_time == 0.0
