@@ -1896,6 +1896,15 @@ class GestureCameraPreview(QFrame):
         self._status_hint_label.setWordWrap(True)
         lay.addWidget(self._status_hint_label)
 
+        self._gesture_guide = QLabel(
+            "GESTURES  •  Pinch: click  •  Open palm: play/pause  •  Swipe: next/previous"
+            "  •  Peace: screenshot  •  Thumbs: volume  •  Three fingers: scroll"
+        )
+        self._gesture_guide.setWordWrap(True)
+        self._gesture_guide.setFont(QFont("Segoe UI", 7))
+        self._gesture_guide.setStyleSheet("color: rgba(190, 205, 220, 180); padding: 2px 0;")
+        lay.addWidget(self._gesture_guide)
+
         footer = QGridLayout()
         footer.setContentsMargins(0, 0, 0, 0)
         footer.setHorizontalSpacing(16)
@@ -1922,7 +1931,7 @@ class GestureCameraPreview(QFrame):
 
         lay.addLayout(footer)
 
-        self._expanded_height = 320
+        self._expanded_height = 344
         self._collapsed_height = 64
 
         try:
@@ -2265,6 +2274,14 @@ class GestureCameraPreview(QFrame):
             elif action == "volume_down":
                 _press_media_key("volumedown")
                 self._show_gesture_toast("👎 Air Gesture: Volume Down")
+
+            elif action == "scroll_up":
+                pyautogui.scroll(3)
+                self._show_gesture_toast("☝️ Air Gesture: Scroll Up")
+
+            elif action == "scroll_down":
+                pyautogui.scroll(-3)
+                self._show_gesture_toast("☝️ Air Gesture: Scroll Down")
 
             elif action == "screenshot":
                 from datetime import datetime
@@ -9509,6 +9526,27 @@ class MainWindow(QMainWindow):
     _audio_level_sig = pyqtSignal(float)
     _subtitle_sig = pyqtSignal(str, str, bool)
     _ultron_malfunction_sig = pyqtSignal(dict)
+    _open_browser_sig = pyqtSignal(str)
+
+    def _open_embedded_browser(self, address: str):
+        """Open a validated URL in a retained QtWebEngine window on the UI thread."""
+        try:
+            from core.embedded_browser import create_embedded_browser_window, normalize_browser_url
+            safe_address = normalize_browser_url(address)
+            if not WEB_ENGINE_AVAILABLE:
+                raise RuntimeError(
+                    "QtWebEngine is not available. Install PyQt6-WebEngine and restart Brahma."
+                )
+            if getattr(self, "_embedded_browser_window", None) is None:
+                self._embedded_browser_window = create_embedded_browser_window(self)
+            self._embedded_browser_window.navigate(safe_address)
+            self._embedded_browser_window.show()
+            self._embedded_browser_window.raise_()
+            self._embedded_browser_window.activateWindow()
+        except Exception as exc:
+            message = f"Embedded browser unavailable: {exc}"
+            self._log_sig.emit(f"ERR: {message}")
+            self._set_status(message)
 
     def _make_window_icon(self) -> QIcon:
         return _logo_icon()
@@ -9555,6 +9593,8 @@ class MainWindow(QMainWindow):
         self._meeting_overlay_collapsed = False
         self._chat_source_queue: deque[str] = deque()
         self._subtitle_sig.connect(self._do_set_live_subtitles)
+        self._open_browser_sig.connect(self._open_embedded_browser)
+        self._embedded_browser_window = None
 
         central = BackgroundWidget(BACKGROUND_IMAGE_FILE if BACKGROUND_IMAGE_FILE.exists() else None)
         central.setStyleSheet("background: transparent;")
@@ -16358,6 +16398,10 @@ class BrahmaUI:
             self._win._subtitle_sig.emit(speaker, text, interim)
         except Exception:
             pass
+
+    def open_embedded_browser(self, address: str):
+        """Queue embedded browser navigation on the Qt main thread."""
+        self._win._open_browser_sig.emit(str(address or ""))
 
     def write_log(self, text: str):
         self._win._log_sig.emit(text)
