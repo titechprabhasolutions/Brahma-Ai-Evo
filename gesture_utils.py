@@ -30,6 +30,16 @@ class GestureTracker:
         self.palm_held_start = 0.0
         self.pos_history: list[tuple[float, float, float]] = []  # (x, y, timestamp)
 
+    def reset(self) -> None:
+        """Clear transient tracking state before a fresh camera session."""
+        self.prev_pinch = False
+        self.last_palm_time = 0.0
+        self.last_peace_time = 0.0
+        self.last_swipe_time = 0.0
+        self.last_volume_time = 0.0
+        self.palm_held_start = 0.0
+        self.pos_history.clear()
+
 
 def estimate_gesture_state(
     landmarks: Optional[Iterable[tuple[float, float, float]]],
@@ -46,9 +56,7 @@ def estimate_gesture_state(
     landmarks = list(landmarks) if landmarks is not None else []
     if len(landmarks) < 21:
         if tracker:
-            tracker.prev_pinch = False
-            tracker.pos_history.clear()
-            tracker.palm_held_start = 0.0
+            tracker.reset()
         return {
             "hand_detected": False,
             "cursor": None,
