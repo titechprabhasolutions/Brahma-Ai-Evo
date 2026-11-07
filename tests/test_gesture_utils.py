@@ -51,3 +51,24 @@ def test_losing_hand_resets_pinch_state():
     missing = estimate_gesture_state(None, tracker=tracker)
     assert missing["hand_detected"] is False
     assert tracker.prev_pinch is False
+
+
+def test_tracker_reset_clears_transient_session_state():
+    tracker = GestureTracker()
+    tracker.prev_pinch = True
+    tracker.last_palm_time = 10.0
+    tracker.last_peace_time = 11.0
+    tracker.last_swipe_time = 12.0
+    tracker.last_volume_time = 13.0
+    tracker.palm_held_start = 14.0
+    tracker.pos_history.append((0.4, 0.5, 15.0))
+
+    tracker.reset()
+
+    assert tracker.prev_pinch is False
+    assert tracker.last_palm_time == 0.0
+    assert tracker.last_peace_time == 0.0
+    assert tracker.last_swipe_time == 0.0
+    assert tracker.last_volume_time == 0.0
+    assert tracker.palm_held_start == 0.0
+    assert tracker.pos_history == []
