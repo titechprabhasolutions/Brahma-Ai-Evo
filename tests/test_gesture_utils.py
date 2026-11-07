@@ -107,8 +107,12 @@ def test_three_finger_vertical_motion_scrolls_down(monkeypatch):
 def test_tracker_reset_clears_scroll_cooldown():
     tracker = GestureTracker()
     tracker.last_scroll_time = 123.0
+    tracker.last_zoom_time = 124.0
+    tracker.two_hand_distance_history.append((0.5, 125.0))
     tracker.reset()
     assert tracker.last_scroll_time == 0.0
+    assert tracker.last_zoom_time == 0.0
+    assert tracker.two_hand_distance_history == []
 
 
 def _two_hands_at_distance(distance: float):
@@ -141,3 +145,16 @@ def test_two_hand_zoom_requires_two_hands_and_resets_history():
     tracker.two_hand_distance_history.append((0.5, 1.0))
     assert estimate_two_hand_zoom([_two_hands_at_distance(0.4)[0]], tracker) is None
     assert tracker.two_hand_distance_history == []
+
+
+def test_two_hand_close_triggers_browser_zoom_out(monkeypatch):
+    from gesture_utils import estimate_two_hand_zoom
+
+    tracker = GestureTracker()
+    ticks = iter([3.00, 3.05, 3.10, 3.15])
+    monkeypatch.setattr("gesture_utils.time.monotonic", lambda: next(ticks))
+    actions = [
+        estimate_two_hand_zoom(_two_hands_at_distance(distance), tracker)
+        for distance in (0.42, 0.35, 0.27, 0.18)
+    ]
+    assert "zoom_out" in actions
