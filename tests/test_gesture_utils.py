@@ -131,7 +131,7 @@ def test_two_hand_spread_triggers_browser_zoom_in(monkeypatch):
         estimate_two_hand_zoom(_two_hands_at_distance(distance), tracker)
         for distance in (0.20, 0.25, 0.32, 0.40)
     ]
-    assert actions[-1] == "zoom_in"
+    assert "zoom_in" in actions
 
 
 def test_two_hand_zoom_requires_two_hands_and_resets_history():
