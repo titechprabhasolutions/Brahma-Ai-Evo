@@ -28,6 +28,8 @@ class GestureTracker:
         self.last_swipe_time = 0.0
         self.last_volume_time = 0.0
         self.last_scroll_time = 0.0
+        self.last_zoom_time = 0.0
+        self.two_hand_distance_history: list[tuple[float, float]] = []
         self.palm_held_start = 0.0
         self.pos_history: list[tuple[float, float, float]] = []  # (x, y, timestamp)
 
@@ -39,6 +41,8 @@ class GestureTracker:
         self.last_swipe_time = 0.0
         self.last_volume_time = 0.0
         self.last_scroll_time = 0.0
+        self.last_zoom_time = 0.0
+        self.two_hand_distance_history.clear()
         self.palm_held_start = 0.0
         self.pos_history.clear()
 
@@ -221,3 +225,42 @@ def estimate_gesture_state(
         "gesture_name": gesture_name,
         "action": action,
     }
+
+
+def estimate_two_hand_zoom(
+    hands: Optional[Iterable[Iterable[tuple[float, float, float]]]],
+    tracker: Optional[GestureTracker] = None,
+) -> Optional[str]:
+    """Detect a deliberate two-hand spread/close motion as browser zoom."""
+    if tracker is None:
+        return None
+    hand_list = [list(hand) for hand in (hands or [])]
+    if len(hand_list) < 2 or any(len(hand) < 10 for hand in hand_list[:2]):
+        tracker.two_hand_distance_history.clear()
+        return None
+
+    now = time.monotonic()
+    centers = []
+    for hand in hand_list[:2]:
+        wrist, middle_mcp = hand[0], hand[9]
+        centers.append(((wrist[0] + middle_mcp[0]) / 2.0, (wrist[1] + middle_mcp[1]) / 2.0))
+    distance = math.hypot(centers[0][0] - centers[1][0], centers[0][1] - centers[1][1])
+
+    history = tracker.two_hand_distance_history
+    history.append((distance, now))
+    tracker.two_hand_distance_history = [item for item in history if now - item[1] <= 0.45]
+    history = tracker.two_hand_distance_history
+    if len(history) < 3 or now - history[0][1] < 0.08 or now - tracker.last_zoom_time < 0.9:
+        return None
+
+    change = history[-1][0] - history[0][0]
+    if change > 0.10:
+        action = "zoom_in"
+    elif change < -0.10:
+        action = "zoom_out"
+    else:
+        return None
+
+    tracker.last_zoom_time = now
+    tracker.two_hand_distance_history.clear()
+    return action
