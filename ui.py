@@ -2238,7 +2238,9 @@ class GestureCameraPreview(QFrame):
         two_hand_action = estimate_two_hand_zoom(hands_landmarks, tracker=self._gesture_tracker)
         if two_hand_action:
             self._handle_air_action(two_hand_action)
-        if gesture.get("action"):
+        if gesture.get("action") and not (
+            len(hands_landmarks) > 1 and gesture.get("action") == "play_pause"
+        ):
             self._handle_air_action(gesture["action"])
         if gesture.get("cursor"):
             norm = self._calibrate_and_smooth_cursor(gesture["cursor"])
@@ -9565,7 +9567,7 @@ class MainWindow(QMainWindow):
         except Exception as exc:
             message = f"Embedded browser unavailable: {exc}"
             self._log_sig.emit(f"ERR: {message}")
-            self._set_status(message)
+            self.statusBar().showMessage(message, 10000)
 
     def _make_window_icon(self) -> QIcon:
         return _logo_icon()
