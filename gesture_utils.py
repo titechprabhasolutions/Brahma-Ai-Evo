@@ -27,6 +27,7 @@ class GestureTracker:
         self.last_peace_time = 0.0
         self.last_swipe_time = 0.0
         self.last_volume_time = 0.0
+        self.last_scroll_time = 0.0
         self.palm_held_start = 0.0
         self.pos_history: list[tuple[float, float, float]] = []  # (x, y, timestamp)
 
@@ -37,6 +38,7 @@ class GestureTracker:
         self.last_peace_time = 0.0
         self.last_swipe_time = 0.0
         self.last_volume_time = 0.0
+        self.last_scroll_time = 0.0
         self.palm_held_start = 0.0
         self.pos_history.clear()
 
@@ -129,14 +131,22 @@ def estimate_gesture_state(
         # Keep last 0.35s
         tracker.pos_history = [p for p in tracker.pos_history if now - p[2] <= 0.35]
 
-        if len(tracker.pos_history) >= 4 and (now - tracker.last_swipe_time) > 0.75:
-            start_x = tracker.pos_history[0][0]
-            end_x = tracker.pos_history[-1][0]
-            dt = tracker.pos_history[-1][2] - tracker.pos_history[0][2]
+        if len(tracker.pos_history) >= 4:
+            start_x, start_y, start_time = tracker.pos_history[0]
+            end_x, end_y, end_time = tracker.pos_history[-1]
+            dt = end_time - start_time
             dx = end_x - start_x
+            dy = end_y - start_y
+            three_finger_scroll = index_open and middle_open and ring_open and not pinky_open
 
-            # Fast horizontal movement
-            if dt > 0.03 and abs(dx) > 0.15:
+            # Three raised fingers provide a deliberate vertical-scroll gesture.
+            if three_finger_scroll and dt > 0.03 and abs(dy) > 0.14 and (now - tracker.last_scroll_time) > 0.55:
+                swipe_action = "scroll_down" if dy > 0 else "scroll_up"
+                gesture_name = "Three Finger Scroll ↓" if dy > 0 else "Three Finger Scroll ↑"
+                tracker.last_scroll_time = now
+                tracker.pos_history.clear()
+            # Horizontal swipes retain the existing media/slide controls.
+            elif (now - tracker.last_swipe_time) > 0.75 and dt > 0.03 and abs(dx) > 0.15:
                 if dx > 0.15:
                     swipe_action = "swipe_right"
                     gesture_name = "Swipe Right 👉"
@@ -151,6 +161,10 @@ def estimate_gesture_state(
 
     elif pinch:
         gesture_name = "Pinch"
+
+    # Three raised fingers are reserved for vertical scrolling (handled above).
+    elif index_open and middle_open and ring_open and not pinky_open:
+        gesture_name = "Three Finger Scroll"
 
     # ✌️ Peace Sign (Index + Middle open, Ring + Pinky closed) -> Screenshot
     elif index_open and middle_open and not ring_open and not pinky_open:
