@@ -109,3 +109,35 @@ def test_tracker_reset_clears_scroll_cooldown():
     tracker.last_scroll_time = 123.0
     tracker.reset()
     assert tracker.last_scroll_time == 0.0
+
+
+def _two_hands_at_distance(distance: float):
+    left = [(0.25, 0.5, 0.0)] * 21
+    right = [(0.75, 0.5, 0.0)] * 21
+    left[0] = (0.4 - distance / 2, 0.5, 0.0)
+    left[9] = (0.4 - distance / 2, 0.5, 0.0)
+    right[0] = (0.4 + distance / 2, 0.5, 0.0)
+    right[9] = (0.4 + distance / 2, 0.5, 0.0)
+    return [left, right]
+
+
+def test_two_hand_spread_triggers_browser_zoom_in(monkeypatch):
+    from gesture_utils import estimate_two_hand_zoom
+
+    tracker = GestureTracker()
+    ticks = iter([2.00, 2.05, 2.10, 2.15])
+    monkeypatch.setattr("gesture_utils.time.monotonic", lambda: next(ticks))
+    actions = [
+        estimate_two_hand_zoom(_two_hands_at_distance(distance), tracker)
+        for distance in (0.20, 0.25, 0.32, 0.40)
+    ]
+    assert actions[-1] == "zoom_in"
+
+
+def test_two_hand_zoom_requires_two_hands_and_resets_history():
+    from gesture_utils import estimate_two_hand_zoom
+
+    tracker = GestureTracker()
+    tracker.two_hand_distance_history.append((0.5, 1.0))
+    assert estimate_two_hand_zoom([_two_hands_at_distance(0.4)[0]], tracker) is None
+    assert tracker.two_hand_distance_history == []
