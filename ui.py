@@ -62,7 +62,7 @@ except Exception:
     WEB_ENGINE_AVAILABLE = False
 
 from discord_bot import DiscordBotService
-from gesture_utils import estimate_gesture_state, GestureTracker
+from gesture_utils import estimate_gesture_state, estimate_two_hand_zoom, GestureTracker
 from smart_home import SmartHomeService
 from smart_home_page_new import BrahmaHomePage, _DeviceTile
 from core.local_brain import local_brain
@@ -1898,7 +1898,7 @@ class GestureCameraPreview(QFrame):
 
         self._gesture_guide = QLabel(
             "GESTURES  •  Pinch: click  •  Open palm: play/pause  •  Swipe: next/previous"
-            "  •  Peace: screenshot  •  Thumbs: volume  •  Three fingers: scroll"
+            "  •  Peace: screenshot  •  Thumbs: volume  •  Three fingers: scroll  •  Two hands: browser zoom"
         )
         self._gesture_guide.setWordWrap(True)
         self._gesture_guide.setFont(QFont("Segoe UI", 7))
@@ -2201,6 +2201,7 @@ class GestureCameraPreview(QFrame):
         height, width = frame.shape[:2]
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         landmarks: list[tuple[float, float, float]] = []
+        hands_landmarks: list[list[tuple[float, float, float]]] = []
         confidence = 0.0
 
         if self._use_tasks_api:
@@ -2212,17 +2213,21 @@ class GestureCameraPreview(QFrame):
             except Exception as exc:
                 self._set_status(f"Gesture task detect error: {exc}", "lost")
                 return
-            if getattr(results, "hand_landmarks", None):
-                hand_landmarks = results.hand_landmarks[0]
-                for landmark in hand_landmarks:
-                    landmarks.append((landmark.x, landmark.y, landmark.z))
-                confidence = 1.0 if landmarks else 0.0
+            for detected_hand in (getattr(results, "hand_landmarks", None) or [])[:2]:
+                hand_points = [(point.x, point.y, point.z) for point in detected_hand]
+                if hand_points:
+                    hands_landmarks.append(hand_points)
+            if hands_landmarks:
+                landmarks = hands_landmarks[0]
+                confidence = 1.0
         else:
             results = self._hands.process(rgb)
-            if getattr(results, "multi_hand_landmarks", None):
-                hand_landmarks = results.multi_hand_landmarks[0]
-                for landmark in hand_landmarks.landmark:
-                    landmarks.append((landmark.x, landmark.y, landmark.z))
+            for detected_hand in (getattr(results, "multi_hand_landmarks", None) or [])[:2]:
+                hand_points = [(point.x, point.y, point.z) for point in detected_hand.landmark]
+                if hand_points:
+                    hands_landmarks.append(hand_points)
+            if hands_landmarks:
+                landmarks = hands_landmarks[0]
             if getattr(results, "multi_handedness", None) and results.multi_handedness:
                 try:
                     confidence = float(results.multi_handedness[0].classification[0].score)
@@ -2230,6 +2235,9 @@ class GestureCameraPreview(QFrame):
                     confidence = 1.0 if landmarks else 0.0
 
         gesture = estimate_gesture_state(landmarks, tracker=self._gesture_tracker)
+        two_hand_action = estimate_two_hand_zoom(hands_landmarks, tracker=self._gesture_tracker)
+        if two_hand_action:
+            self._handle_air_action(two_hand_action)
         if gesture.get("action"):
             self._handle_air_action(gesture["action"])
         if gesture.get("cursor"):
@@ -2282,6 +2290,17 @@ class GestureCameraPreview(QFrame):
             elif action == "scroll_down":
                 pyautogui.scroll(-3)
                 self._show_gesture_toast("☝️ Air Gesture: Scroll Down")
+
+            elif action in ("zoom_in", "zoom_out"):
+                host_window = self.window()
+                browser_window = getattr(host_window, "_embedded_browser_window", None)
+                if browser_window is not None:
+                    current_zoom = browser_window.view.zoomFactor()
+                    delta = 0.10 if action == "zoom_in" else -0.10
+                    browser_window.view.setZoomFactor(max(0.5, min(2.0, current_zoom + delta)))
+                    self._show_gesture_toast("👐 Air Gesture: Browser Zoom In" if action == "zoom_in" else "👐 Air Gesture: Browser Zoom Out")
+                else:
+                    self._show_gesture_toast("Open the embedded browser to use two-hand zoom")
 
             elif action == "screenshot":
                 from datetime import datetime
