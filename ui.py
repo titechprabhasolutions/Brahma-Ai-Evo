@@ -2029,6 +2029,16 @@ class GestureCameraPreview(QFrame):
                 pass
             self._hands = None
 
+        # A restarted camera session must not inherit a held pinch, swipe
+        # history, or stale cursor position from the previous session.
+        self._gesture_tracker.reset()
+        self._prev_pinch = False
+        self._smoothed_cursor = None
+        self._smoothed_screen = None
+        self._smoothed_landmarks = None
+        self._last_screen_pos = None
+        self._cursor_anchor = None
+
         try:
             self.setFixedHeight(self._collapsed_height)
         except Exception:

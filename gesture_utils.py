@@ -19,13 +19,26 @@ from typing import Iterable, Optional
 
 class GestureTracker:
     def __init__(self):
+        # Hysteresis prevents the cursor click state flickering at the pinch boundary.
         self.prev_pinch = False
+        self.pinch_on_ratio = 0.32
+        self.pinch_off_ratio = 0.45
         self.last_palm_time = 0.0
         self.last_peace_time = 0.0
         self.last_swipe_time = 0.0
         self.last_volume_time = 0.0
         self.palm_held_start = 0.0
         self.pos_history: list[tuple[float, float, float]] = []  # (x, y, timestamp)
+
+    def reset(self) -> None:
+        """Clear transient tracking state before a fresh camera session."""
+        self.prev_pinch = False
+        self.last_palm_time = 0.0
+        self.last_peace_time = 0.0
+        self.last_swipe_time = 0.0
+        self.last_volume_time = 0.0
+        self.palm_held_start = 0.0
+        self.pos_history.clear()
 
 
 def estimate_gesture_state(
@@ -38,10 +51,12 @@ def estimate_gesture_state(
     if isinstance(screen_size, bool):
         prev_pinch = screen_size
 
-    if not landmarks or len(landmarks) < 21:
+    # MediaPipe returns lists, but accepting any iterable makes this utility safer
+    # for tests and alternate camera pipelines too.
+    landmarks = list(landmarks) if landmarks is not None else []
+    if len(landmarks) < 21:
         if tracker:
-            tracker.pos_history.clear()
-            tracker.palm_held_start = 0.0
+            tracker.reset()
         return {
             "hand_detected": False,
             "cursor": None,
@@ -83,7 +98,19 @@ def estimate_gesture_state(
 
     # Pinch detection (Thumb tip to Index tip)
     pinch_dist = math.hypot(thumb_tip[0] - index_tip[0], thumb_tip[1] - index_tip[1])
-    pinch = pinch_dist < (palm_scale * 0.35) or pinch_dist < 0.055
+    # ULTRON-style hysteresis: enter a pinch at a tighter threshold, but keep
+    # it active until the fingers separate farther. This avoids rapid
+    # click/release flicker when landmarks jitter around one threshold.
+    was_pinching = tracker.prev_pinch if tracker is not None else bool(prev_pinch)
+    pinch_ratio = pinch_dist / palm_scale
+    pinch_on = tracker.pinch_on_ratio if tracker is not None else 0.32
+    pinch_off = tracker.pinch_off_ratio if tracker is not None else 0.45
+    pinch = pinch_ratio < (pinch_off if was_pinching else pinch_on) or (
+        pinch_dist < 0.055 and not was_pinching
+    )
+    pinch_triggered = bool(pinch and not was_pinching)
+    if tracker is not None:
+        tracker.prev_pinch = pinch
 
     # Cursor position (index fingertip normalized 0..1)
     cursor = (float(index_tip[0]), float(index_tip[1]))
@@ -176,7 +203,7 @@ def estimate_gesture_state(
         "hand_detected": True,
         "cursor": cursor,
         "pinch": pinch,
-        "pinch_triggered": bool(pinch and not prev_pinch),
+        "pinch_triggered": pinch_triggered,
         "gesture_name": gesture_name,
         "action": action,
     }
