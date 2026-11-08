@@ -47,6 +47,25 @@ class GestureTracker:
         self.pos_history.clear()
 
 
+def orient_cursor_for_display(
+    cursor: tuple[float, float],
+    *,
+    invert_x: bool = False,
+    invert_y: bool = False,
+) -> tuple[float, float]:
+    """Apply optional axis inversion to normalized cursor coordinates.
+
+    The camera preview is mirrored before MediaPipe runs, so the default is
+    to preserve the detected coordinates. Inversion is an explicit UI option.
+    """
+    x, y = float(cursor[0]), float(cursor[1])
+    if invert_x:
+        x = 1.0 - x
+    if invert_y:
+        y = 1.0 - y
+    return x, y
+
+
 def estimate_gesture_state(
     landmarks: Optional[Iterable[tuple[float, float, float]]],
     screen_size: tuple[int, int] | bool | None = None,
