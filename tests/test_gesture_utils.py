@@ -1,4 +1,8 @@
-from gesture_utils import GestureTracker, estimate_gesture_state
+from gesture_utils import (
+    GestureTracker,
+    estimate_gesture_state,
+    orient_cursor_for_display,
+)
 
 
 def _landmarks_with_pinch_distance(distance: float):
@@ -158,3 +162,12 @@ def test_two_hand_close_triggers_browser_zoom_out(monkeypatch):
         for distance in (0.42, 0.35, 0.27, 0.18)
     ]
     assert "zoom_out" in actions
+
+
+def test_cursor_coordinates_match_mirrored_camera_preview_by_default():
+    assert orient_cursor_for_display((0.2, 0.7)) == (0.2, 0.7)
+
+
+def test_cursor_axis_inversion_is_explicit_and_independent():
+    assert orient_cursor_for_display((0.2, 0.7), invert_x=True) == (0.8, 0.7)
+    assert orient_cursor_for_display((0.2, 0.7), invert_y=True) == (0.2, 0.30000000000000004)
