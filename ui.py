@@ -62,7 +62,7 @@ except Exception:
     WEB_ENGINE_AVAILABLE = False
 
 from discord_bot import DiscordBotService
-from gesture_utils import estimate_gesture_state, estimate_two_hand_zoom, GestureTracker
+from gesture_utils import estimate_gesture_state, estimate_two_hand_zoom, orient_cursor_for_display, GestureTracker
 from smart_home import SmartHomeService
 from smart_home_page_new import BrahmaHomePage, _DeviceTile
 from core.local_brain import local_brain
@@ -1700,7 +1700,7 @@ class _GestureRenderCanvas(QWidget):
         self._search_phase = 0
         self._target_opacity = 0.0
         self._skeleton_opacity = 0.0
-        self._invert_x = True
+        self._invert_x = False
 
     def set_invert_x(self, invert: bool):
         self._invert_x = invert
@@ -1741,7 +1741,7 @@ class _GestureRenderCanvas(QWidget):
         mid_y = (min_y + max_y) / 2.0
         points: list[QPointF] = []
         for x, y, _ in self._landmarks:
-            if getattr(self, "_invert_x", True):
+            if getattr(self, "_invert_x", False):
                 px = center_x - (x - mid_x) * scale
             else:
                 px = center_x + (x - mid_x) * scale
@@ -1826,7 +1826,7 @@ class GestureCameraPreview(QFrame):
         self._gesture_canvas_alpha = 0.0
         self._sensitivity = 2.2
         self._sensitivity_levels = {"Low": 1.6, "Medium": 2.2, "High": 3.0, "Ultra": 4.0}
-        self._invert_cursor_x = True
+        self._invert_cursor_x = False
         self._invert_cursor_y = False
         self._cursor_calibration_x_min: float | None = None
         self._cursor_calibration_x_max: float | None = None
@@ -1859,9 +1859,9 @@ class GestureCameraPreview(QFrame):
         self._status_text.setStyleSheet("color: #ffb347;")
         header_row.addWidget(self._status_text)
 
-        self._invert_btn = QPushButton("⇄ Invert: ON")
+        self._invert_btn = QPushButton("⇄ Invert: OFF")
         self._invert_btn.setCheckable(True)
-        self._invert_btn.setChecked(True)
+        self._invert_btn.setChecked(False)
         self._invert_btn.setFixedHeight(26)
         self._invert_btn.setStyleSheet(
             "QPushButton { background: rgba(0, 229, 255, 0.15); color: #ffb347; border: 1px solid rgba(0, 229, 255, 0.4); border-radius: 6px; padding: 2px 8px; font-size: 11px; font-weight: bold; }"
@@ -2106,7 +2106,8 @@ class GestureCameraPreview(QFrame):
             self._set_status(f"Gesture camera unavailable: {exc}", "lost")
             return
 
-        # Mirror horizontally for natural webcam reflection and correct swipe direction
+        # Mirror before detection so cursor coordinates already match the preview.
+        # The cursor's Invert toggle is therefore OFF by default.
         frame = cv2.flip(frame, 1)
 
         import importlib
@@ -2243,6 +2244,10 @@ class GestureCameraPreview(QFrame):
 
         gesture = estimate_gesture_state(landmarks, tracker=self._gesture_tracker)
         two_hand_action = estimate_two_hand_zoom(hands_landmarks, tracker=self._gesture_tracker)
+        if not gesture.get("hand_detected"):
+            # Do not resume from a stale cursor position after hand loss.
+            self._smoothed_cursor = None
+            self._last_screen_pos = None
         if two_hand_action:
             self._handle_air_action(two_hand_action)
         if gesture.get("action") and not (
@@ -2365,10 +2370,11 @@ class GestureCameraPreview(QFrame):
         raw_x = float(cursor[0])
         raw_y = float(cursor[1])
 
-        if self._invert_cursor_x:
-            raw_x = 1.0 - raw_x
-        if self._invert_cursor_y:
-            raw_y = 1.0 - raw_y
+        raw_x, raw_y = orient_cursor_for_display(
+            (raw_x, raw_y),
+            invert_x=self._invert_cursor_x,
+            invert_y=self._invert_cursor_y,
+        )
 
         try:
             s = float(self._sensitivity)
