@@ -1,0 +1,30 @@
+name: Windows Python checks
+
+on:
+  push:
+    branches:
+      - main
+      - feature/gesture-hud-embedded-browser
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  tests:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install test and Windows integration dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pytest PyQt6 PyQt6-WebEngine opencv-python mediapipe sounddevice PyAudio
+      - name: Compile application modules
+        run: python -m compileall -q main.py ui.py core actions gesture_utils.py
+      - name: Run gesture and browser tests
+        run: python -m pytest -q tests/test_gesture_utils.py tests/test_embedded_browser.py
